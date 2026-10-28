@@ -1,0 +1,173 @@
+import streamlit as st
+import random
+import time
+
+# 1. ตั้งค่าหน้าเว็บให้เป็นธีมหน้าเกม
+st.set_page_config(page_title="Snake Game: Arcade Edition", page_icon="🐍", layout="centered")
+
+# ตกแต่ง CSS ให้หน้าจอมีสไตล์ตู้เกมย้อนยุค
+st.markdown("""
+    <style>
+    .stButton>button {
+        width: 100%;
+        border-radius: 10px;
+        height: 3.5em;
+        font-size: 18px !important;
+        font-weight: bold;
+    }
+    .game-title {
+        text-align: center;
+        font-size: 36px;
+        font-weight: bold;
+        color: #4CAF50;
+        margin-bottom: 5px;
+    }
+    .grid-row {
+        display: flex;
+        justify-content: center;
+    }
+    .grid-cell {
+        width: 18px;
+        height: 18px;
+        margin: 1px;
+        border-radius: 3px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# ขนาดของแผนที่เกม (กว้าง x ยาว)
+GRID_SIZE = 15
+
+# 2. เตรียมระบบบันทึกสถานะของเกม (Session State) เพื่อควบคุมความต่อเนื่อง
+if 'snake' not in st.session_state:
+    st.session_state.snake = [(7, 7), (7, 8), (7, 9)]  # ตัวงูเริ่มต้น
+    st.session_state.direction = "UP"  # ทิศทางเริ่มต้น
+    st.session_state.food = (3, 3)     # ตำแหน่งอาหารเริ่มต้น
+    st.session_state.score = 0
+    st.session_state.game_over = False
+    st.session_state.high_score = 0
+
+# แสดงหัวข้อเกมด้านบนสุด
+st.markdown('<div class="game-title">🐍 SNAKE ARCADE 🎮</div>', unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: gray;'>เกมเจ้างูเขียวจอมตะกละสำหรับส่งอาจารย์</p>", unsafe_allow_html=True)
+st.markdown("---")
+
+# 📊 แสดงกระดานคะแนนแบบเรียลไทม์
+col_score1, col_score2 = st.columns(2)
+with col_score1:
+    st.metric(label="🍎 CURRENT SCORE", value=st.session_state.score)
+with col_score2:
+    st.metric(label="🏆 HIGH SCORE", value=st.session_state.high_score)
+
+st.markdown("---")
+
+# =========================================================
+# ฟังก์ชันคำนวณการเดินของงูและการกินอาหาร
+# =========================================================
+def move_snake(next_dir):
+    if st.session_state.game_over:
+        return
+
+    # ห้ามงูเดินถอยหลังชนตัวเองทันที
+    current_dir = st.session_state.direction
+    if (next_dir == "UP" and current_dir == "DOWN") or \
+       (next_dir == "DOWN" and current_dir == "UP") or \
+       (next_dir == "LEFT" and current_dir == "RIGHT") or \
+       (next_dir == "RIGHT" and current_dir == "LEFT"):
+        next_dir = current_dir
+
+    st.session_state.direction = next_dir
+    head_x, head_y = st.session_state.snake[0]
+
+    # คำนวณพิกัดหัวงูในช่องถัดไป
+    if next_dir == "UP": head_y -= 1
+    elif next_dir == "DOWN": head_y += 1
+    elif next_dir == "LEFT": head_x -= 1
+    elif next_dir == "RIGHT": head_x += 1
+
+    new_head = (head_x, head_y)
+
+    # 🛑 ตรวจสอบการชนขอบแมพ หรือ ชนตัวตัวเอง = GAME OVER
+    if head_x < 0 or head_x >= GRID_SIZE or head_y < 0 or head_y >= GRID_SIZE or new_head in st.session_state.snake:
+        st.session_state.game_over = True
+        if st.session_state.score > st.session_state.high_score:
+            st.session_state.high_score = st.session_state.score
+        return
+
+    # เพิ่มหัวใหม่เข้าไปในตัวงู
+    st.session_state.snake.insert(0, new_head)
+
+    # ตรวจสอบการกินอาหาร (งูเดินไปทับช่องอาหารพอดี)
+    if new_head == st.session_state.food:
+        st.session_state.score += 10
+        # สุ่มตำแหน่งอาหารชิ้นใหม่ที่ไม่ทับตัวงู
+        while True:
+            new_food = (random.randint(0, GRID_SIZE-1), random.randint(0, GRID_SIZE-1))
+            if new_food not in st.session_state.snake:
+                st.session_state.food = new_food
+                break
+    else:
+        # ถ้างูไม่ได้กินอาหาร ให้ตัดหางออกเพื่อคงความยาวเท่าเดิม
+        st.session_state.snake.pop()
+
+# =========================================================
+# ปุ่มกดควบคุมทิศทาง (ปุ่มกด D-Pad รูปกากบาทสำหรับเว็บ UI)
+# =========================================================
+clicked_dir = None
+
+if not st.session_state.game_over:
+    # จัดเลย์เอาต์ปุ่มกดจำลอง D-Pad ให้กดบนหน้าจอได้ง่าย ๆ ทั้งคอมและมือถือ/iPad
+    col_l1, col_mid, col_r1 = st.columns([1, 2, 1])
+    with col_mid:
+        col_up_space, col_up_btn, col_up_space2 = st.columns([1, 2, 1])
+        with col_up_btn:
+            if st.button("🔼 UP"): clicked_dir = "UP"
+            
+        col_left_btn, col_center_space, col_right_btn = st.columns([2, 1, 2])
+        with col_left_btn:
+            if st.button("◀️ LEFT"): clicked_dir = "LEFT"
+        with col_right_btn:
+            if st.button("▶️ RIGHT"): clicked_dir = "RIGHT"
+            
+        col_down_space, col_down_btn, col_down_space2 = st.columns([1, 2, 1])
+        with col_down_btn:
+            if st.button("🔽 DOWN"): clicked_dir = "DOWN"
+
+    # ถ้ามีการกดปุ่มทิศทาง ให้สั่งงูเดินทันที
+    if clicked_dir:
+        move_snake(clicked_dir)
+        st.rerun()
+
+# ถ้าชนขอบหรือตาย ให้แสดงหน้าต่างแจ้งแพ้และปุ่มเริ่มใหม่
+else:
+    st.error(f"💀 GAME OVER! เจ้างูชนสนิท ศพไม่สวย! ได้คะแนนไปทั้งหมด: {st.session_state.score} คะแนน")
+    if st.button("🔄 รีสตาร์ทเริ่มเกมใหม่", type="primary"):
+        st.session_state.snake = [(7, 7), (7, 8), (7, 9)]
+        st.session_state.direction = "UP"
+        st.session_state.food = (3, 3)
+        st.session_state.score = 0
+        st.session_state.game_over = False
+        st.rerun()
+
+st.markdown("---")
+
+# =========================================================
+# วาดกราฟิกแผนที่เกม (Render Grid Map)
+# =========================================================
+with st.container(border=True):
+    for y in range(GRID_SIZE):
+        row_html = '<div class="grid-row">'
+        for x in range(GRID_SIZE):
+            # ตั้งค่าสีแต่ละช่อง: หัวงู = สีเขียวเข้ม, ตัวงู = สีเขียวอ่อน, อาหาร = สีแดง, ช่องว่าง = สีดำ/เทา
+            if (x, y) == st.session_state.snake[0]:
+                color = "#2E7D32"  # หัวงูสีเขียวเข้ม
+            elif (x, y) in st.session_state.snake:
+                color = "#81C784"  # ตัวงูสีเขียวอ่อน
+            elif (x, y) == st.session_state.food:
+                color = "#E53935"  # อาหารลูกแอปเปิ้ลสีแดง
+            else:
+                color = "#212121"  # พื้นหลังสนามเกมสีเทาดำ
+                
+            row_html += f'<div class="grid-cell" style="background-color: {color};"></div>'
+        row_html += '</div>'
+        st.markdown(row_html, unsafe_allow_html=True)
